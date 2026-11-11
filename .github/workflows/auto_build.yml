@@ -1,6 +1,8 @@
 name: auto_build
 
-# 每次 push 到 main 且改动了规则源文件时，自动构建 dist/ 并提交回去
+# 两条触发线：
+# 1. push 改动了规则源文件 → 立即构建
+# 2. 每周一定时构建 → 重新拉上游订阅，上游有更新就自动发新版本（手机端随后自动拉取）
 on:
   push:
     branches:
@@ -11,6 +13,9 @@ on:
       - 'package.json'
       - 'tsconfig.json'
       - '.github/workflows/auto_build.yml'
+  schedule:
+    # 每周一 04:00（北京时间）= 周日 20:00 UTC
+    - cron: '0 20 * * 0'
   workflow_dispatch:
 
 permissions:
@@ -23,8 +28,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 想在 GitHub 网页上切上游，不用改代码：Settings → Variables 里加 GKD_UPSTREAM=official 即可
+    env:
+      GKD_UPSTREAM: ${{ vars.GKD_UPSTREAM }}
     # 跳过本工作流自己产生的提交，避免循环
-    if: ${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    if: ${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):') }}
     steps:
       - uses: actions/checkout@v7
 

@@ -40,6 +40,8 @@ GKD 读 checkUpdateUrl（./gkd.version.json5）发现 version 变了 → 拉取�
 
 版本号由 `@gkd-kit/tools` 的 `updateDist` 在构建时自增，不用手改。规则内容没变时不会重复提交。
 
+除了 push 触发，`auto_build` 还有一条**每周一 04:00（北京时间）的定时构建**：每次都会重新下载上游订阅，上游更新了就会自动出下一个版本，手机端随后自己拉到。所以规则维护是「上游负责更新，这里负责跟随」，你不需要盯。
+
 ## 第一次部署
 
 如果这个仓库还只在本地，用自带脚本一键建仓 + 推送 + 触发首次构建：
@@ -63,11 +65,20 @@ node scripts/deploy.mjs --dry-run
 
 ## 已内置的规则
 
-### 1. 整合的官方应用规则
+### 1. 上游应用规则
 
-构建时会从 npmmirror 拉取 `@gkd-kit/subscription`（即官方订阅，610 个应用、1371 个规则组、37,173 条规则），把应用规则并进本订阅，自己的规则优先、官方规则只填补空缺。相关逻辑在 `scripts/official.ts`，构建时自动执行，不需要手动同步。
+构建时会下载一份上游订阅，把它的应用规则并进本订阅（自己的规则优先、上游只填补空缺），逻辑在 `scripts/official.ts`。上游按顺序尝试，**只取第一个成功的**：
 
-> ⚠️ 官方订阅**已经停止维护**（仓库 2024-05-12 归档，包名就叫「默认订阅-已停止维护」，版本停在 186）。规则停留在 2024 年，很多应用改版后不会再生效，失效规则一般是无害的「匹配不到」，但遇到某个应用行为异常时，先怀疑这里。想完全去掉：删掉 `scripts/subscription-merged.ts` 里对 `loadOfficialSubscription()` 的调用，改回直接 `export default subscription` 即可。
+| 顺序 | 上游                                                          | 许可 | 状态                                       | 规模                       |
+| ---- | ------------------------------------------------------------- | ---- | ------------------------------------------ | -------------------------- |
+| 1    | [甘霖的GKD订阅](https://github.com/ganlinte/GKD-subscription) | MIT  | 仍在维护（每周有提交）                     | 610 个应用 / 1389 个规则组 |
+| 2    | [官方订阅](https://github.com/gkd-kit/subscription)           | MIT  | **已归档**（2024-05-12，规则停在 2024 年） | 610 个应用 / 1371 个规则组 |
+
+两个都是 MIT，可以合法再分发（保留署名即可，见「规则来源与许可」）。**不能同时合并两份**：双方订阅 id 与分类 key 都不一致，混起来规则会指错分类，所以只有「换源」没有「叠加」。
+
+想换上游不用改代码：仓库 Settings → Variables 里加一个 `GKD_UPSTREAM`，值填 `ganlin` 或 `official`；不设置就是默认顺序。上游全挂时构建不会失败，只会退回只用自有规则。
+
+> ⚠️ 官方那份已经死了，规则停留在 2024 年，很多应用改版后不会再生效。失效规则一般无害（匹配不到就不做事），但某个应用行为异常时先怀疑它。
 
 合并时会做三处兼容处理，都只动元信息、不动规则内容：
 
@@ -91,7 +102,8 @@ node scripts/deploy.mjs --dry-run
 ## 规则来源与许可
 
 - 自己的规则（`src/`）：随本仓库。
-- 合并进来的应用规则：来自 [@gkd-kit/subscription](https://github.com/gkd-kit/subscription)，作者 lisonge，**MIT 许可**（见 npm 包内 `package.json` 的 `license` 字段），已归档停止维护。
+- 合并进来的应用规则（默认）：来自 [ganlinte/GKD-subscription](https://github.com/ganlinte/GKD-subscription)，作者 ganlinte，**MIT 许可**。
+- 兜底上游：[gkd-kit/subscription](https://github.com/gkd-kit/subscription)，作者 lisonge，**MIT 许可**（见 npm 包内 `package.json` 的 `license` 字段），仓库已归档。
 - 选择器与构建工具：[@gkd-kit/tools](https://github.com/gkd-kit/selector)、[@gkd-kit/define](https://www.npmjs.com/package/@gkd-kit/define)，均为 MIT。
 
 ## 改规则

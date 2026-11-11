@@ -15,16 +15,63 @@ type GroupLike = {
 };
 type AppGroupLike = GroupLike & { name: string };
 
+type Provider = {
+  /** 日志里显示的名字 */
+  name: string;
+  /** 来源仓库，只用于日志与 README 溯源 */
+  repo: string;
+  license: string;
+  /** 依次尝试的下载地址（镜像挂了自动换下一个） */
+  urls: readonly string[];
+};
+
 /**
- * 官方订阅（gkd-kit/subscription）已经停止维护，npm 包里 name 就是「默认订阅-已停止维护」。
- * 它仍以 MIT 许可发布（见包内 package.json 的 license 字段），所以可以在构建时把它的应用规则并进来，
- * 但规则停在 2024 年，很多应用改版后不会再生效——出问题先查这里。
+ * 上游候选，按顺序尝试，只取**第一个成功**的：两个订阅的应用规则会整体替换，
+ * 不能把两份混着合并（分类 key 与订阅 id 都不一致，混起来必错）。
+ *
+ * 1. 甘霖的GKD订阅：MIT 许可，仍在维护（2026 年仍在每周更新），610 个应用。
+ * 2. 官方订阅：gkd-kit/subscription 已于 2024-05 归档，npm 包名就是「默认订阅-已停止维护」，
+ *    规则停在 2024 年，仅作兜底。
+ *
+ * 想固定用哪一个：环境变量 GKD_UPSTREAM=ganlin|official（默认自动：甘霖 → 官方 → 只用自有规则）。
  */
-const SOURCES = [
-  'https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/dist/gkd.json5',
-  'https://fastly.jsdelivr.net/npm/@gkd-kit/subscription@latest/dist/gkd.json5',
-  'https://unpkg.com/@gkd-kit/subscription@latest/dist/gkd.json5',
-] as const;
+const PROVIDERS: readonly Provider[] = [
+  {
+    name: '甘霖的GKD订阅',
+    repo: 'https://github.com/ganlinte/GKD-subscription',
+    license: 'MIT',
+    urls: [
+      'https://gcore.jsdelivr.net/gh/ganlinte/GKD-subscription@main/dist/ganlin_gkd.json5',
+      'https://fastly.jsdelivr.net/gh/ganlinte/GKD-subscription@main/dist/ganlin_gkd.json5',
+      'https://raw.githubusercontent.com/ganlinte/GKD-subscription/main/dist/ganlin_gkd.json5',
+    ],
+  },
+  {
+    name: '官方订阅（已停止维护）',
+    repo: 'https://github.com/gkd-kit/subscription',
+    license: 'MIT',
+    urls: [
+      'https://registry.npmmirror.com/@gkd-kit/subscription/latest/files/dist/gkd.json5',
+      'https://fastly.jsdelivr.net/npm/@gkd-kit/subscription@latest/dist/gkd.json5',
+      'https://unpkg.com/@gkd-kit/subscription@latest/dist/gkd.json5',
+    ],
+  },
+];
+
+/** 读 GKD_UPSTREAM，允许固定上游；读不到就当没设置 */
+function pickProviders(): readonly Provider[] {
+  const env = (
+    globalThis as { process?: { env?: Record<string, string | undefined> } }
+  ).process?.env;
+  const pick = env?.GKD_UPSTREAM;
+  if (pick === 'ganlin') {
+    return PROVIDERS.filter((p) => p.repo.includes('ganlinte'));
+  }
+  if (pick === 'official') {
+    return PROVIDERS.filter((p) => p.repo.includes('gkd-kit'));
+  }
+  return PROVIDERS;
+}
 
 function isSubscription(value: unknown): value is Subscription {
   if (typeof value !== 'object' || value === null) {
@@ -42,32 +89,44 @@ function isSubscription(value: unknown): value is Subscription {
   );
 }
 
-/** 下载并解析官方订阅；全部源都失败时返回 null，构建退化成只有自己的规则 */
+/**
+ * 下载并解析上游订阅：按 PROVIDERS 顺序找到第一个能用的源就返回。
+ * 全部失败时返回 null，构建退化成只有自己的规则（绝不因为上游挂掉而让 CI 变红）。
+ */
 export async function loadOfficialSubscription(): Promise<Subscription | null> {
-  for (const url of SOURCES) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-      if (!res.ok) {
-        console.warn(`[official] ${url} 返回 ${res.status}，换下一个源`);
-        continue;
+  for (const provider of pickProviders()) {
+    for (const url of provider.urls) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+        if (!res.ok) {
+          console.warn(
+            `[upstream] ${provider.name}：${url} 返回 ${res.status}`,
+          );
+          continue;
+        }
+        const parsed: unknown = json5.parse(await res.text());
+        if (!isSubscription(parsed)) {
+          console.warn(`[upstream] ${provider.name}：${url} 不是订阅结构`);
+          continue;
+        }
+        const appCount = parsed.apps?.length ?? 0;
+        const groupCount = (parsed.apps ?? []).reduce(
+          (sum, app) => sum + (app.groups?.length ?? 0),
+          0,
+        );
+        console.log(
+          `[upstream] 载入 ${provider.name} v${parsed.version}（${provider.license}）：` +
+            `${appCount} 个应用 / ${groupCount} 个规则组 —— ${url}`,
+        );
+        return parsed;
+      } catch (e) {
+        console.warn(
+          `[upstream] ${provider.name}：${url} 失败：${e instanceof Error ? e.message : String(e)}`,
+        );
       }
-      const parsed: unknown = json5.parse(await res.text());
-      if (!isSubscription(parsed)) {
-        console.warn(`[official] ${url} 内容不是订阅结构，换下一个源`);
-        continue;
-      }
-      const appCount = parsed.apps?.length ?? 0;
-      console.log(
-        `[official] 载入成功：${parsed.name} v${parsed.version}，${appCount} 个应用 —— ${url}`,
-      );
-      return parsed;
-    } catch (e) {
-      console.warn(
-        `[official] ${url} 失败：${e instanceof Error ? e.message : String(e)}`,
-      );
     }
   }
-  console.warn('[official] 所有源都不可用，本次只构建自有规则');
+  console.warn('[upstream] 所有上游都不可用，本次只构建自有规则');
   return null;
 }
 
