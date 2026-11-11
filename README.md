@@ -24,6 +24,23 @@ https://fastly.jsdelivr.net/gh/9ucb/gkd-subscription@main/dist/gkd.json5
 
 上面的账号名和仓库名由 `scripts/deploy.mjs` 在部署时按实际目标替换；如果你换了账号或仓库名，记得同步改 `src/subscription.ts` 和本文件里的地址。
 
+## 私有仓库的订阅获取方式
+
+仓库是私有的，所以 raw / jsDelivr 地址匿名访问会 404，GKD 拿不到。
+
+### 手动导入（当前可用）
+
+1. 打开 https://github.com/9ucb/gkd-subscription/blob/main/dist/gkd.json5 ，点右上角 Download 或复制全文（约 1.1 KB）；
+2. 传到手机（微信/网盘皆可），文件名保持 `gkd.json5`；
+3. GKD → 订阅 → 添加 → 选择本地文件导入。
+
+改完规则后要重复一次上面三步；版本号（`dist/gkd.version.json5`）会由构建自动 +1。
+
+### 自动更新（需要代理）
+
+如果想让手机直接订阅一个链接并自动收到更新，需要一层带凭据的代理，例如 Cloudflare Worker：
+Worker 里存一个只读 token，对外暴露一个随机路径，由它去 GitHub API 取私有仓库里的 `dist/gkd.json5`。
+
 ## 自动更新是怎么生效的
 
 ```
