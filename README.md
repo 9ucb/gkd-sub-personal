@@ -1,4 +1,4 @@
-# 我的 GKD 订阅
+# GKD 自用订阅
 
 基于 [gkd-kit/subscription-template](https://github.com/gkd-kit/subscription-template) 的个人订阅仓库。
 
@@ -48,7 +48,7 @@ GKD 读 checkUpdateUrl（./gkd.version.json5）发现 version 变了 → 拉取�
 2. 在项目目录里运行：
 
 ```shell
-node scripts/deploy.mjs --repo gkd-subscription --token <你的token>
+node scripts/deploy.mjs --repo gkd-sub-personal --token <你的token>
 ```
 
 脚本会：建仓库 → 上传文件 → 打开 Actions 写权限 → 触发 `auto_build` → 等构建结束 → 打印订阅地址。token 只用于本次请求，不落盘。
@@ -63,7 +63,21 @@ node scripts/deploy.mjs --dry-run
 
 ## 已内置的规则
 
-现在 `src/globalGroups.ts` 里有两个全局规则组（不绑定具体应用，所有 app 都生效）：
+### 1. 整合的官方应用规则
+
+构建时会从 npmmirror 拉取 `@gkd-kit/subscription`（即官方订阅，610 个应用、1371 个规则组、37,173 条规则），把应用规则并进本订阅，自己的规则优先、官方规则只填补空缺。相关逻辑在 `scripts/official.ts`，构建时自动执行，不需要手动同步。
+
+> ⚠️ 官方订阅**已经停止维护**（仓库 2024-05-12 归档，包名就叫「默认订阅-已停止维护」，版本停在 186）。规则停留在 2024 年，很多应用改版后不会再生效，失效规则一般是无害的「匹配不到」，但遇到某个应用行为异常时，先怀疑这里。想完全去掉：删掉 `scripts/subscription-merged.ts` 里对 `loadOfficialSubscription()` 的调用，改回直接 `export default subscription` 即可。
+
+合并时会做三处兼容处理，都只动元信息、不动规则内容：
+
+- 重名规则补序号（旧数据里有同组两条同名规则，新版校验会报错）；
+- 旧快照链接 `inspect.gkd.li` 迁到 `i.gkd.li`，迁不了就丢掉；
+- 组名没有分类前缀的，按关键词补上（`开屏广告-` / `更新提示-` / `功能类-` 等），因为 GKD 靠名字前缀做分类。
+
+### 2. 自己的全局规则
+
+`src/globalGroups.ts` 里有两个全局规则组（不绑定具体应用，所有 app 都生效）：
 
 | 规则组   | 默认     | 作用                                                                                  |
 | -------- | -------- | ------------------------------------------------------------------------------------- |
@@ -72,7 +86,13 @@ node scripts/deploy.mjs --dry-run
 
 设计上刻意保守：只匹配**文案完全相等**的按钮（如 `[text="跳过"]`），不去猜 id、也不用宽泛的子串匹配；配合 `actionMaximum: 1` + `resetMatch: 'app'`，每次启动应用只点一次，避免在应用内误触视频「跳过片头」这类同名按钮。代价是全局规则不看 activityId，理论上仍可能误点 —— 不放心就把「开屏广告」组在 GKD 里关掉。
 
-`src/apps/` 下的三个文件（微信 / QQ / GKD）目前 `groups` 为空，等你给具体界面再加。
+`src/apps/` 下的三个文件（微信 / QQ / GKD）自己的 `groups` 还是空的，实际生效的是合并进来的官方规则。
+
+## 规则来源与许可
+
+- 自己的规则（`src/`）：随本仓库。
+- 合并进来的应用规则：来自 [@gkd-kit/subscription](https://github.com/gkd-kit/subscription)，作者 lisonge，**MIT 许可**（见 npm 包内 `package.json` 的 `license` 字段），已归档停止维护。
+- 选择器与构建工具：[@gkd-kit/tools](https://github.com/gkd-kit/selector)、[@gkd-kit/define](https://www.npmjs.com/package/@gkd-kit/define)，均为 MIT。
 
 ## 改规则
 
