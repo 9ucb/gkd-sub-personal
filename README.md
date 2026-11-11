@@ -11,35 +11,20 @@
 构建完成后（第一次 Actions 跑绿之后）用下面任意一个：
 
 ```txt
-https://raw.githubusercontent.com/9ucb/gkd-subscription/main/dist/gkd.json5
+https://raw.githubusercontent.com/9ucb/gkd-sub-personal/main/dist/gkd.json5
 ```
 
 如果 raw.githubusercontent.com 打不开（国内常见），换成 jsDelivr 镜像：
 
 ```txt
-https://fastly.jsdelivr.net/gh/9ucb/gkd-subscription@main/dist/gkd.json5
+https://fastly.jsdelivr.net/gh/9ucb/gkd-sub-personal@main/dist/gkd.json5
 ```
 
 > 两个链接指向同一份文件，GKD 里二选一即可。jsDelivr 有几分钟缓存，改完规则后可能要等一会儿或点一次「检查更新」。
 
 上面的账号名和仓库名由 `scripts/deploy.mjs` 在部署时按实际目标替换；如果你换了账号或仓库名，记得同步改 `src/subscription.ts` 和本文件里的地址。
 
-## 私有仓库的订阅获取方式
-
-仓库是私有的，所以 raw / jsDelivr 地址匿名访问会 404，GKD 拿不到。
-
-### 手动导入（当前可用）
-
-1. 打开 https://github.com/9ucb/gkd-subscription/blob/main/dist/gkd.json5 ，点右上角 Download 或复制全文（约 1.1 KB）；
-2. 传到手机（微信/网盘皆可），文件名保持 `gkd.json5`；
-3. GKD → 订阅 → 添加 → 选择本地文件导入。
-
-改完规则后要重复一次上面三步；版本号（`dist/gkd.version.json5`）会由构建自动 +1。
-
-### 自动更新（需要代理）
-
-如果想让手机直接订阅一个链接并自动收到更新，需要一层带凭据的代理，例如 Cloudflare Worker：
-Worker 里存一个只读 token，对外暴露一个随机路径，由它去 GitHub API 取私有仓库里的 `dist/gkd.json5`。
+> 为什么是公开仓库：GKD 的「添加订阅」只有一个链接输入框（`gkd-app/.../SubsLinkDialogState.kt:197`），抓取用不带凭据的 `NetworkClients.client.get(url)`（`SubscriptionRepository.kt:769`），私有仓库的 raw 地址匿名一律 404，而 URL 里塞 token 也不被 GitHub 接受。所以想「粘一条链接就自动更新」，仓库必须能被匿名读取。这里放的都是开屏广告跳过之类的规则，不含个人信息。
 
 ## 自动更新是怎么生效的
 

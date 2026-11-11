@@ -27,7 +27,7 @@ const token = opt(
   'token',
   process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '',
 );
-const repoName = opt('repo', 'gkd-subscription');
+const repoName = opt('repo', 'gkd-sub-personal');
 const isPrivate = flag('private');
 const dryRun = flag('dry-run');
 const skipWait = flag('no-wait');
